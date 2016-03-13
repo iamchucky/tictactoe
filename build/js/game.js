@@ -35,107 +35,23 @@
       board.classList.add(this.curPlayer);
     },
 
-    collectPieces: function(direction) {
-      var j = this.curColRow.row;
-      var i = this.curColRow.col;
-      var player = this.curPlayer;
-      var count = 0;
-      var out = [];
-
-      while(1) {
-        // 0 1 2
-        // 3   4
-        // 5 6 7
-        switch (direction) {
-          case 0:
-            i--;
-            j++;
-            break;
-          case 1:
-            j++;
-            break;
-          case 2:
-            i++;
-            j++;
-            break;
-          case 3:
-            i--;
-            break;
-          case 4:
-            i++;
-            break;
-          case 5:
-            i--;
-            j--;
-            break;
-          case 6:
-            j--;
-            break;
-          case 7:
-            i++;
-            j--;
-            break;
+    checkAllDir: function(data) {
+      return fetch('/checkAllDir', {
+        method: 'post',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(data)
+      }).then(function(res) {
+        if (res.status >= 200 && res.status < 300) {
+          return res.json();
         }
 
-        count++;
-        // we don't count more than 2 pieces away from the curColRow
-        if (count > 2) {
-          break;
-        }
-
-        // break if out of the bound
-        if (i < 0 || j < 0 || i >= cols || j >= rows) {
-          break;
-        }
-
-        var key = 'c'+i+'r'+j;
-        // break if there is no such piece
-        if (!this.pieces[key]) {
-          break;
-        }
-        // break if the color is different
-        if (this.pieces[key] != this.curPlayer) {
-          break;
-        }
-
-        out.push(this.pieces[key]);
-      }
-      return out;
-    },
-
-    checkAllDir: function() {
-      var pieces = [];
-
-      // check row
-      pieces = pieces.concat(this.collectPieces(3));
-      pieces = pieces.concat(this.collectPieces(4));
-      if (pieces.length >= 2) {
-        return true;
-      }
-
-      // check col
-      pieces = [];
-      pieces = pieces.concat(this.collectPieces(1));
-      pieces = pieces.concat(this.collectPieces(6));
-      if (pieces.length >= 2) {
-        return true;
-      }
-      
-      // check diagonal 1
-      pieces = [];
-      pieces = pieces.concat(this.collectPieces(5));
-      pieces = pieces.concat(this.collectPieces(2));
-      if (pieces.length >= 2) {
-        return true;
-      }
-      
-      // check diagonal 2
-      pieces = [];
-      pieces = pieces.concat(this.collectPieces(0));
-      pieces = pieces.concat(this.collectPieces(7));
-      if (pieces.length >= 2) {
-        return true;
-      }
+        var error = new Error(res.statusText);
+        error.response = res;
+        throw error;
+      });
     },
 
     checkFull: function() {
@@ -150,38 +66,52 @@
       return full;
     },
 
-    setPiece: function(row, col) {
-      var key = 'c'+col+'r'+row;
-      if (this.pieces[key]) {
+    getPieceKey: function(row, col) {
+      return 'c'+col+'r'+row;
+    },
+
+    isEmpty: function(row, col) {
+      var key = this.getPieceKey(row, col);
+      return this.pieces[key] == undefined;
+    },
+
+    setPiece: function() {
+      var row = this.curColRow.row;
+      var col = this.curColRow.col;
+      if (!this.isEmpty(row, col)) {
         return;
       }
 
-      this.curColRow = {
-        row: row,
-        col: col
-      };
-
+      var key = this.getPieceKey(row, col);
       var cell = document.querySelector('#board .row .cell[row="'+row+'"][col="'+col+'"]');
       cell.classList.remove('empty');
       cell.classList.add(this.curPlayer);
 
       this.pieces[key] = this.curPlayer;
-      return true;
     },
 
     checkGameState: function() {
-      var self = this;
-      var winner = this.checkAllDir();
-      if (winner) {
-        showWinningText(this.curPlayer + ' won');
+      if (!this.isEmpty(this.curColRow.row, this.curColRow.col)) {
         return;
       }
 
-      // check ending condition
-      var gameover = this.checkFull();
-      if (!gameover) {
-        this.nextPlayer();
-      }
+      var self = this;
+      var data = {
+        board: self.pieces,
+        rows: rows,
+        cols: cols,
+        row: self.curColRow.row,
+        col: self.curColRow.col,
+        player: self.curPlayer
+      };
+
+      return this.checkAllDir(data)
+        .then(function(res) {
+          if (res.err) {
+            throw res.err;
+          }
+          return res;
+        });
     },
 
     registerUIHandlers: function() {
@@ -192,10 +122,30 @@
           var c = parseInt(e.target.getAttribute('col'));
           var r = parseInt(e.target.getAttribute('row'));
 
-          var success = self.setPiece(r, c);
-          if (success) {
-            self.checkGameState();
-          }
+          self.curColRow = {
+            row: r,
+            col: c
+          };
+
+          self.checkGameState()
+            .then(function(res) {
+              self.setPiece();
+
+              if (res.win) {
+                showWinningText(self.curPlayer + ' won');
+                return;
+              }
+
+              // check ending condition
+              var gameover = self.checkFull();
+              if (!gameover) {
+                self.nextPlayer();
+              }
+            })
+            .catch(function(ex) {
+              console.log(ex);
+            });
+
         }
       });
     }
