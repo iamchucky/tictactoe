@@ -36,22 +36,24 @@
     },
 
     checkAllDir: function(data) {
-      return fetch('/checkAllDir', {
-        method: 'post',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(data)
-      }).then(function(res) {
-        if (res.status >= 200 && res.status < 300) {
-          return res.json();
+      var directions = [ 
+            [3, 4], // check row
+            [1, 6], // check col
+            [5, 2], // check diagonal 1
+            [0, 7]  // check diagonal 2
+      ];
+
+      for (var i = 0; i < directions.length; ++i) {
+        var pieces = [];
+        for (var j = 0; j < directions[i].length; ++j) {
+          pieces = pieces.concat(collectPieces(data, directions[i][j]));
         }
 
-        var error = new Error(res.statusText);
-        error.response = res;
-        throw error;
-      });
+        // if we have found 2 pieces apart from current position, this player win
+        if (pieces.length >= 2) {
+          return true;
+        }
+      }
     },
 
     checkFull: function() {
@@ -105,14 +107,9 @@
         player: self.curPlayer
       };
 
-      return this.checkAllDir(data)
-        .then(function(res) {
-          if (res.err) {
-            throw res.err;
-          }
-          return res;
-        });
+      return this.checkAllDir(data);
     },
+
 
     registerUIHandlers: function() {
       var self = this;
@@ -127,24 +124,18 @@
             col: c
           };
 
-          self.checkGameState()
-            .then(function(res) {
-              self.setPiece();
+          var result = self.checkGameState();
+          self.setPiece();
+          if (result) {
+            showWinningText(self.curPlayer + ' won');
+            return;
+          }
 
-              if (res.win) {
-                showWinningText(self.curPlayer + ' won');
-                return;
-              }
-
-              // check ending condition
-              var gameover = self.checkFull();
-              if (!gameover) {
-                self.nextPlayer();
-              }
-            })
-            .catch(function(ex) {
-              console.log(ex);
-            });
+          // check ending condition
+          var gameover = self.checkFull();
+          if (!gameover) {
+            self.nextPlayer();
+          }
 
         }
       });
@@ -160,6 +151,73 @@
         elem.style.opacity = 1;
       }, 10);
     }
+  }
+
+  function collectPieces(data, direction) {
+    var j = data.row;
+    var i = data.col;
+    var count = 0;
+    var out = [];
+
+    while(1) {
+      // 0 1 2
+      // 3   4
+      // 5 6 7
+      switch (direction) {
+        case 0:
+          i--;
+          j++;
+          break;
+        case 1:
+          j++;
+          break;
+        case 2:
+          i++;
+          j++;
+          break;
+        case 3:
+          i--;
+          break;
+        case 4:
+          i++;
+          break;
+        case 5:
+          i--;
+          j--;
+          break;
+        case 6:
+          j--;
+          break;
+        case 7:
+          i++;
+          j--;
+          break;
+      }
+
+      count++;
+      // we don't count more than 2 pieces away from the curColRow
+      if (count > 2) {
+        break;
+      }
+
+      // break if out of the bound
+      if (i < 0 || j < 0 || i >= data.cols || j >= data.rows) {
+        break;
+      }
+
+      var key = 'c'+i+'r'+j;
+      // break if there is no such piece
+      if (!data.board[key]) {
+        break;
+      }
+      // break if the color is different
+      if (data.board[key] != data.player) {
+        break;
+      }
+
+      out.push(data.board[key]);
+    }
+    return out;
   }
 
 })();
